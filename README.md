@@ -3,7 +3,7 @@ Una aplicación en C++ que aplica filtros a imágenes en formatos PGM (escala de
 # Clonar o descargar el código
 
 ```bash
-git clone japeto/netpbm_filters
+git clone https://github.com/japeto/netpbm_filters/tree/main
 cd netpbm_filters
 ```
 
