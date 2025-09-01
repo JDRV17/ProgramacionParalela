@@ -1,101 +1,82 @@
 #include <iostream>
+#include <cstring>
+#include <ctime>
+#include <chrono>
+#include "image.h"
+#include "pgmimage.h"
+#include "ppmimage.h"
 
 #define MAX_FILENAME 256
 #define BUFFER_SIZE 1024
 
 int main(int argc, char* argv[]) {
 
-  // Kernel de blur (promedio)
-  const float blur_kernel[3][3] = {
-      {1.0/9, 1.0/9, 1.0/9},
-      {1.0/9, 1.0/9, 1.0/9},
-      {1.0/9, 1.0/9, 1.0/9}
-  };
-
-  char buffer[BUFFER_SIZE];
-  char magic[3];
-  int width;
-  int height;
-  int max_color;
-  int *pixels;
-  int* blurred_pixels;
-
-  if(argc<2){
-    std::cout << "missing input and output paths\n";
-    std::cout << "usage:" << argv[0] << " input_image.pgm output_image.pgm" << std::endl;
-    std::cout << "or "<< argv[0] << "input_image.ppm output_image.ppm" << std::endl;
+  if(argc<4){
+    std::cout << "Missing input and output paths\n";
+    std::cout << "Usage:" << argv[0] << " input_image.pgm output_image.pgm --f [blur|laplace|sharpening]" << std::endl;
+    std::cout << "or "<< argv[0] << "input_image.ppm output_image.ppm --f [blur|laplace|sharpening]" << std::endl;
     return 1;
   }
+
+  auto wall_start = std::chrono::high_resolution_clock::now();
+
+  const char* filterType = nullptr;
+  for (int i = 3; i < argc; i++) {
+      if (strcmp(argv[i], "--f") == 0 && i + 1 < argc) {
+          filterType = argv[i + 1];
+          break;
+      }
+  }
+  if (filterType == NULL) {
+    std::cout << "Error, must specify a filter with --f" << std::endl;
+    return 1;
+  }
+  if (strcmp(filterType, "blur") != 0 && 
+    strcmp(filterType, "laplace") != 0 && 
+    strcmp(filterType, "sharpening") != 0) {
+    std::cout << "Error, wrong filter. Use blur, laplace or sharpening" << std::endl;
+    return 1;
+  }
+
   // abrir archivo
+  Image* image = Image::createFromFile(argv[1]);
+  if (image == NULL) {
+      std::cout << "Error, incorrect path or incorrect file." << std::endl;
+      return 1;
+  }
+
   FILE *file = fopen(argv[1], "r");
   if (file == NULL) {
-    std::cout << "Error, incorrect path or incorrect file."<< std::endl;
+    std::cout << "Error, could not open the input file."<< std::endl;
+    delete image;
     return 1;
   }
-  // Leer y mostrar línea por línea
-  fscanf(file, "%2s", magic);  // magic number
-  fscanf(file, "%d %d", &width, &height);
-  fscanf(file, "%d", &max_color);
 
-  int pixel_count = width * height;
-  if (strcmp(magic, "P3") != 0){
-    int pixel_count = width * height * 3;
-  }
-
-  pixels = (int *) malloc(pixel_count);
-  int value;
-
-  for (int i = 0; i < pixel_count; i++) {
-      if (fscanf(file, "%d", &value) != 1) {
-        std::cout << "Error reading pixels."<< std::endl;
-        free(pixels);
-        fclose(file);
-        return 0;
-      }
-      pixels[i] = value;
-  }
+  image->load(file);
   fclose(file);
 
-  blurred_pixels = (int *) malloc(pixel_count);
-  // Aplicar filtro blur
-  for (int y = 0; y < height; y++) {
-    for (int x = 0; x < width; x++) {
-      float sum = 0.0;
-      float weight_sum = 0.0;
+  clock_t cpu_start = clock();
+  image->applyFilter(filterType);
+  clock_t cpu_end = clock();
+  double cpu_time = double(cpu_end - cpu_start) / CLOCKS_PER_SEC;
 
-      // Aplicar kernel 3x3
-      for (int ky = -1; ky <= 1; ky++) {
-        for (int kx = -1; kx <= 1; kx++) {
-          int nx = x + kx;
-          int ny = y + ky;
-          
-          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-            int idx = (ny * width + nx);
-            sum += pixels[idx] * blur_kernel[ky+1][kx+1];
-            weight_sum += blur_kernel[ky+1][kx+1];
-          }
-        }
-      }
-
-      // Normalizar y asegurar valores dentro del rango
-      int result = static_cast<int>(sum / weight_sum);
-      result = std::max(0, std::min(max_color, result));
-
-      int idx = (y * width + x);
-      blurred_pixels[idx] = result;
-    }
+  FILE *output = fopen(argv[2], "w");
+  if (output == NULL) {
+    std::cout << "Error, could not create the output file."<< std::endl;
+    delete image;
+    return 1;
   }
 
-  FILE * output = fopen(argv[2], "w");
-  (void) fprintf(output, "%s\n%d %d\n%d\n", magic, width, height, max_color);
-  for (int i = 0; i < pixel_count; i++) {
-    fprintf(output, "%d\n", blurred_pixels[i]);
-  }
-  (void) fclose(output);
+  image->save(output);
+  fclose(output);
+
+  auto wall_end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> wall_time = wall_end - wall_start;
+
+  delete image;
+
+  std::cout << "CPU Time (applying the filter only): " << cpu_time << " seconds" << std::endl;
+  std::cout << "Total Execution Time: " << wall_time.count() << " seconds" << std::endl;
+  
   return 0;
-
-
-  
-  
-
 }
